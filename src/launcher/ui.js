@@ -30,17 +30,21 @@ export function createLauncherUI({
     
     .panel {
       position: fixed;
-      top: 20px;
-      right: 70px;
-      width: 300px;
+      top: 16px;
+      right: 16px;
+      width: min(300px, calc(100vw - 24px));
+      max-height: calc(100vh - 24px);
+      display: flex;
+      flex-direction: column;
       background: ${LAUNCHER_CONFIG.THEME.primary};
       border: 1px solid ${LAUNCHER_CONFIG.THEME.accent};
-      border-radius: 10px;
+      border-radius: 12px;
       color: ${LAUNCHER_CONFIG.THEME.text};
       font-family: system-ui, 'Segoe UI', Roboto, Helvetica, Arial;
       z-index: 999999;
-      box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+      box-shadow: 0 10px 36px rgba(0,0,0,0.55);
       overflow: hidden;
+      backdrop-filter: blur(6px);
       animation: slideIn 0.3s ease-out;
     }
     
@@ -58,6 +62,11 @@ export function createLauncherUI({
     
     .body {
       padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      overflow-y: auto;
+      max-height: calc(100vh - 120px);
     }
     
     .row {
@@ -68,13 +77,13 @@ export function createLauncherUI({
     
     .btn {
       flex: 1;
-      padding: 9px;
+      padding: 8px;
       border: none;
       border-radius: 8px;
-      font-weight: 700;
+      font-weight: 600;
       cursor: pointer;
       transition: all 0.2s;
-      font-size: 14px;
+      font-size: 13px;
     }
     
     .btn:disabled {
@@ -111,6 +120,7 @@ export function createLauncherUI({
       padding: 10px;
       border-radius: 8px;
       margin-top: 10px;
+      word-break: break-word;
     }
     
     .stat {
@@ -133,6 +143,35 @@ export function createLauncherUI({
     .selected {
       outline: 2px solid ${LAUNCHER_CONFIG.THEME.highlight};
     }
+
+    @media (max-width: 480px) {
+      .panel {
+        top: 12px;
+        right: 12px;
+        border-radius: 12px;
+        max-height: calc(100vh - 20px);
+      }
+      .header {
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .btn {
+        font-size: 13px;
+        padding: 8px;
+      }
+      .card {
+        margin-top: 8px;
+      }
+      .body {
+        max-height: calc(100vh - 110px);
+      }
+    }
+
+    @media (max-height: 520px) {
+      .body {
+        max-height: calc(100vh - 100px);
+      }
+    }
   `;
   root.appendChild(style);
   
@@ -151,10 +190,11 @@ export function createLauncherUI({
       </div>
       <div class="row">
         <button class="btn ghost guard-btn">${texts.autoGuard}</button>
-        <button class="btn ghost slave-btn">🔗 Slave</button>
+        <button class="btn ghost slave-btn">${texts.autoSlave}</button>
       </div>
       <div class="row">
         <button class="btn ghost log-window-btn">${texts.logWindow}</button>
+        <button class="btn ghost pixelstudio-btn">🎨 PixelStudio</button>
       </div>
       <div class="card">
         <div class="stat">
@@ -187,9 +227,6 @@ export function createLauncherUI({
         </div>
       </div>
       <div class="status status-text">${texts.chooseBot}</div>
-      <div class="info-box" style="margin: 10px 0; padding: 8px; background: rgba(119, 92, 227, 0.1); border-radius: 6px; font-size: 12px; color: #b8b8b8;">
-        💡 ${texts.localExecution || 'Ejecución local con acceso completo al sistema de tokens'}
-      </div>
       <div class="row" style="margin-top: 12px;">
         <button class="btn primary launch-btn" disabled>${texts.launch}</button>
         <button class="btn ghost cancel-btn">${texts.close}</button>
@@ -224,6 +261,7 @@ export function createLauncherUI({
   
   // Estado interno
   let selectedBot = null;
+  let launching = false;
   
   // Función para seleccionar bot
   function selectBot(botType) {
@@ -233,7 +271,7 @@ export function createLauncherUI({
     elements.choice.textContent = botType === 'farm' ? t('launcher.autoFarm') : 
                                   botType === 'image' ? t('launcher.autoImage') : 
                                   botType === 'guard' ? t('launcher.autoGuard') :
-                                  botType === 'slave' ? '🔗 Slave' : botType;
+                                  botType === 'slave' ? t('launcher.autoSlave') : botType;
     elements.launchBtn.disabled = false;
     
     // Actualizar estilos de botones
@@ -267,11 +305,51 @@ export function createLauncherUI({
     }
   }
   
+  async function launchSelectedBot() {
+    if (!selectedBot || launching) {
+      return;
+    }
+
+    launching = true;
+
+    if (elements.launchBtn) {
+      elements.launchBtn.disabled = true;
+      elements.launchBtn.textContent = t('launcher.loading');
+    }
+    if (elements.statusText) {
+      elements.statusText.textContent = t('launcher.downloading');
+    }
+
+    try {
+      if (onLaunch) {
+        log('🚀 Cerrando launcher antes de iniciar el bot');
+        cleanup();
+        await onLaunch(selectedBot);
+      }
+    } catch (error) {
+      log('❌ Error en launch:', error);
+      try {
+        alert(t('launcher.loadErrorMsg'));
+      } catch {}
+    } finally {
+      launching = false;
+    }
+  }
+  
   // Event listeners
-  elements.farmBtn.addEventListener('click', () => selectBot('farm'));
-  elements.imageBtn.addEventListener('click', () => selectBot('image'));
-  elements.guardBtn.addEventListener('click', () => selectBot('guard'));
-  elements.slaveBtn.addEventListener('click', () => selectBot('slave'));
+  const bindBotButton = (button, botType) => {
+    if (!button) return;
+    button.addEventListener('click', () => selectBot(botType));
+    button.addEventListener('dblclick', () => {
+      selectBot(botType);
+      launchSelectedBot();
+    });
+  };
+
+  bindBotButton(elements.farmBtn, 'farm');
+  bindBotButton(elements.imageBtn, 'image');
+  bindBotButton(elements.guardBtn, 'guard');
+  bindBotButton(elements.slaveBtn, 'slave');
   
   // Variable para mantener referencia a la ventana de logs
   let logWindow = null;
@@ -284,28 +362,17 @@ export function createLauncherUI({
     }
   });
   
-  elements.launchBtn.addEventListener('click', async () => {
-    if (!selectedBot) return;
-    
-    elements.launchBtn.disabled = true;
-    elements.launchBtn.textContent = t('launcher.loading');
-    elements.statusText.textContent = t('launcher.downloading');
-    
-    try {
-      if (onLaunch) {
-        // Cerrar el launcher inmediatamente antes de lanzar el bot
-        log('🚀 Cerrando launcher antes de iniciar el bot');
-        cleanup();
-        
-        // Lanzar el bot después de cerrar el launcher
-        await onLaunch(selectedBot);
-      }
-    } catch (error) {
-      log('❌ Error en launch:', error);
-      alert(t('launcher.loadErrorMsg'));
-      // Si hay error, recrear la UI ya que se cerró
-      // En este caso, el error se manejará en el nivel superior
-    }
+  // Botón PixelStudio
+  const pixelstudioBtn = panel.querySelector('.pixelstudio-btn');
+  if (pixelstudioBtn) {
+    pixelstudioBtn.addEventListener('click', () => {
+      window.open('https://pixelstudio.alarisco.xyz', '_blank');
+      log('🎨 Abriendo PixelStudio en una nueva pestaña');
+    });
+  }
+  
+  elements.launchBtn.addEventListener('click', () => {
+    launchSelectedBot();
   });
   
   // Función de limpieza
@@ -396,6 +463,10 @@ export function createLauncherUI({
       elements.guardBtn.textContent = newTexts.autoGuard;
     }
     
+    if (elements.slaveBtn) {
+      elements.slaveBtn.textContent = newTexts.autoSlave;
+    }
+    
     if (elements.launchBtn) {
       elements.launchBtn.textContent = newTexts.launch;
     }
@@ -477,7 +548,8 @@ export function createLauncherUI({
     if (selectedBot && elements.choice) {
       elements.choice.textContent = selectedBot === 'farm' ? newTexts.autoFarm : 
                                     selectedBot === 'image' ? newTexts.autoImage : 
-                                    newTexts.autoGuard;
+                                    selectedBot === 'guard' ? newTexts.autoGuard :
+                                    selectedBot === 'slave' ? newTexts.autoSlave : selectedBot;
     }
     
     // Actualizar textos de referencia local

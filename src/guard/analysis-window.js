@@ -85,6 +85,15 @@ export function closeAnalysisWindow() {
         autoRefreshInterval = null;
       }
       
+      // Detener grabación de sesión si está activa
+      if (sessionRecording) {
+        stopSessionRecording();
+      }
+      
+      // Limpiar datos de sesión
+      sessionData = [];
+      sessionStartTime = null;
+      
       // Remover la ventana del DOM
       if (analysisWindow && analysisWindow.parentNode) {
         document.body.removeChild(analysisWindow);
@@ -98,11 +107,117 @@ export function closeAnalysisWindow() {
   }
 }
 
+// Función para actualizar textos cuando cambia el idioma
+export function updateAnalysisTexts() {
+  if (analysisWindowInstance) {
+    const { analysisWindow, controlPanel } = analysisWindowInstance;
+    
+    // Actualizar título de la ventana
+    const header = analysisWindow.querySelector('div[style*="background: #2d3748"]');
+    if (header) {
+      const titleSpan = header.querySelector('span');
+      if (titleSpan) {
+        titleSpan.textContent = t('guard.analysisTitle');
+      }
+    }
+    
+    // Actualizar textos del panel de control
+    if (controlPanel) {
+      // Recrear el contenido del panel con los nuevos textos
+      controlPanel.innerHTML = `
+        <h3 style="margin: 0 0 15px 0; color: #60a5fa;">📊 ${t('guard.statistics','Estadísticas')}</h3>
+        <div style="background: #374151; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+          <div style="margin-bottom: 10px;">
+            <span style="color: #10b981;">✅ ${t('guard.correctPixels')}:</span>
+            <span id="correctPixels" style="float: right; font-weight: bold;">-</span>
+          </div>
+          <div style="margin-bottom: 10px;">
+            <span style="color: #ef4444;">❌ ${t('guard.incorrectPixels')}:</span>
+            <span id="incorrectPixels" style="float: right; font-weight: bold;">-</span>
+          </div>
+          <div style="margin-bottom: 10px;">
+            <span style="color: #f59e0b;">⚪ ${t('guard.missingPixels')}:</span>
+            <span id="missingPixels" style="float: right; font-weight: bold;">-</span>
+          </div>
+          <div>
+            <span style="color: #8b5cf6;">🎯 ${t('guard.precision','Precisión')}:</span>
+            <span id="accuracy" style="float: right; font-weight: bold;">-</span>
+          </div>
+        </div>
+
+        <h3 style="margin: 0 0 15px 0; color: #60a5fa;">🎨 ${t('guard.visualization','Visualización')}</h3>
+        <div style="background: #374151; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+          ${createToggle('showCorrect', `✅ ${t('guard.showCorrect')}`, false)}
+          ${createToggle('showIncorrect', `❌ ${t('guard.showIncorrect')}`, true)}
+          ${createToggle('showMissing', `⚪ ${t('guard.showMissing')}`, true)}
+        </div>
+
+        <h3 style="margin: 0 0 15px 0; color: #60a5fa;">📹 ${t('guard.recording','Grabación')}</h3>
+        <div style="background: #374151; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+          ${createToggle('recordSession', `📹 ${t('guard.recordSession','Grabar Sesión')}`, false)}
+          <button id="snapshotBtn" style="width: 100%; padding: 10px; background: #f59e0b; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; margin-top: 10px;">
+            📸 ${t('guard.snapshot','Snapshot')}
+          </button>
+          <div id="sessionControls" style="margin-top: 10px; opacity: 0; max-height: 0; overflow: hidden; transition: all 0.3s ease;">
+            <button id="downloadSession" style="width: 100%; padding: 8px; background: #8b5cf6; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 12px;">
+              💾 ${t('guard.downloadData','Descargar Datos')}
+            </button>
+          </div>
+        </div>
+
+        <h3 style="margin: 0 0 15px 0; color: #60a5fa;">⚙️ ${t('guard.configuration','Configuración')}</h3>
+        <div style="background: #374151; padding: 15px; border-radius: 8px;">
+          <div style="margin-bottom: 15px;">
+            <label style="display: block; margin-bottom: 5px; font-size: 14px;">🔍 ${t('guard.zoom','Zoom')}:</label>
+            <input type="range" id="zoomSlider" min="0.5" max="5" step="0.1" value="1" style="width: 100%;">
+            <span id="zoomValue" style="font-size: 12px; color: #cbd5e0;">100%</span>
+          </div>
+          <div style="margin-bottom: 15px;">
+            ${createToggle('autoRefresh', `🔄 ${t('guard.autoRefresh')}`, true)}
+            <div style="display: flex; align-items: center; gap: 10px; margin-top: 10px;">
+              <label style="font-size: 12px; color: #cbd5e0;">${t('guard.interval','Intervalo')} (s):</label>
+              <input type="number" id="refreshInterval" min="1" max="60" value="5" style="width: 60px; padding: 4px; background: #4b5563; color: white; border: 1px solid #6b7280; border-radius: 4px;">
+            </div>
+          </div>
+          <button id="refreshAnalysis" style="width: 100%; padding: 10px; background: #60a5fa; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer;">
+            🔄 ${t('guard.updateAnalysis','Actualizar Análisis')}
+          </button>
+          <button id="autoFitZoom" style="width: 100%; padding: 8px; background: #10b981; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; margin-top: 8px;">
+            📐 ${t('guard.adjustZoom','Ajustar Zoom')}
+          </button>
+          
+          <!-- Coordenadas del área -->
+          <div style="margin-top: 15px; padding-top: 10px; border-top: 1px solid #4b5563;">
+            <div style="font-size: 10px; color: #9ca3af; margin-bottom: 5px;">
+              <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
+                <span>${t('guard.upperLeft','Esquina Superior Izquierda')}:</span>
+                <span id="coordsUpperLeft">--</span>
+              </div>
+              <div style="display: flex; justify-content: space-between;">
+                <span>${t('guard.lowerRight','Esquina Inferior Derecha')}:</span>
+                <span id="coordsLowerRight">--</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+      
+      // Reconfigurar los controles después de actualizar el HTML
+      if (guardState.lastAnalysis) {
+        setupControls(controlPanel, analysisWindowInstance.canvas, guardState.lastAnalysis);
+        setupSessionRecording(controlPanel, guardState.lastAnalysis);
+        updateStatistics(controlPanel, guardState.lastAnalysis);
+        updateCoordinatesDisplay(controlPanel);
+      }
+    }
+  }
+}
+
 // Crear ventana de análisis
 export function createAnalysisWindow() {
   // Verificar que hay datos para analizar
   if (!guardState.protectionArea || !guardState.originalPixels.size) {
-    alert('❌ No hay área protegida o píxeles cargados para analizar');
+    alert(`❌ ${t('guard.noAreaOrPixels','No hay área protegida o píxeles cargados para analizar')}`);
     return;
   }
 
@@ -179,7 +294,7 @@ export function createAnalysisWindow() {
   `;
 
   controlPanel.innerHTML = `
-    <h3 style="margin: 0 0 15px 0; color: #60a5fa;">📊 Estadísticas</h3>
+    <h3 style="margin: 0 0 15px 0; color: #60a5fa;">📊 ${t('guard.statistics','Estadísticas')}</h3>
     <div style="background: #374151; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
       <div style="margin-bottom: 10px;">
         <span style="color: #10b981;">✅ ${t('guard.correctPixels')}:</span>
@@ -194,61 +309,61 @@ export function createAnalysisWindow() {
         <span id="missingPixels" style="float: right; font-weight: bold;">-</span>
       </div>
       <div>
-        <span style="color: #8b5cf6;">🎯 Precisión:</span>
+        <span style="color: #8b5cf6;">🎯 ${t('guard.precision','Precisión')}:</span>
         <span id="accuracy" style="float: right; font-weight: bold;">-</span>
       </div>
     </div>
 
-    <h3 style="margin: 0 0 15px 0; color: #60a5fa;">🎨 Visualización</h3>
+    <h3 style="margin: 0 0 15px 0; color: #60a5fa;">🎨 ${t('guard.visualization','Visualización')}</h3>
     <div style="background: #374151; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
       ${createToggle('showCorrect', `✅ ${t('guard.showCorrect')}`, false)}
       ${createToggle('showIncorrect', `❌ ${t('guard.showIncorrect')}`, true)}
       ${createToggle('showMissing', `⚪ ${t('guard.showMissing')}`, true)}
     </div>
 
-    <h3 style="margin: 0 0 15px 0; color: #60a5fa;">📹 Grabación</h3>
+    <h3 style="margin: 0 0 15px 0; color: #60a5fa;">📹 ${t('guard.recording','Grabación')}</h3>
     <div style="background: #374151; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
-      ${createToggle('recordSession', '📹 Record Session', false)}
+      ${createToggle('recordSession', `📹 ${t('guard.recordSession','Grabar Sesión')}`, false)}
       <button id="snapshotBtn" style="width: 100%; padding: 10px; background: #f59e0b; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; margin-top: 10px;">
-        📸 Snapshot
+        📸 ${t('guard.snapshot','Snapshot')}
       </button>
       <div id="sessionControls" style="margin-top: 10px; opacity: 0; max-height: 0; overflow: hidden; transition: all 0.3s ease;">
         <button id="downloadSession" style="width: 100%; padding: 8px; background: #8b5cf6; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 12px;">
-          💾 Descargar Datos
+          💾 ${t('guard.downloadData','Descargar Datos')}
         </button>
       </div>
     </div>
 
-    <h3 style="margin: 0 0 15px 0; color: #60a5fa;">⚙️ Configuración</h3>
+    <h3 style="margin: 0 0 15px 0; color: #60a5fa;">⚙️ ${t('guard.configuration','Configuración')}</h3>
     <div style="background: #374151; padding: 15px; border-radius: 8px;">
       <div style="margin-bottom: 15px;">
-        <label style="display: block; margin-bottom: 5px; font-size: 14px;">🔍 Zoom:</label>
+        <label style="display: block; margin-bottom: 5px; font-size: 14px;">🔍 ${t('guard.zoom','Zoom')}:</label>
         <input type="range" id="zoomSlider" min="0.5" max="5" step="0.1" value="1" style="width: 100%;">
         <span id="zoomValue" style="font-size: 12px; color: #cbd5e0;">100%</span>
       </div>
       <div style="margin-bottom: 15px;">
         ${createToggle('autoRefresh', `🔄 ${t('guard.autoRefresh')}`, true)}
         <div style="display: flex; align-items: center; gap: 10px; margin-top: 10px;">
-          <label style="font-size: 12px; color: #cbd5e0;">Intervalo (s):</label>
+          <label style="font-size: 12px; color: #cbd5e0;">${t('guard.interval','Intervalo')} (s):</label>
           <input type="number" id="refreshInterval" min="1" max="60" value="5" style="width: 60px; padding: 4px; background: #4b5563; color: white; border: 1px solid #6b7280; border-radius: 4px;">
         </div>
       </div>
       <button id="refreshAnalysis" style="width: 100%; padding: 10px; background: #60a5fa; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer;">
-        🔄 Actualizar Análisis
+        🔄 ${t('guard.updateAnalysis','Actualizar Análisis')}
       </button>
       <button id="autoFitZoom" style="width: 100%; padding: 8px; background: #10b981; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; margin-top: 8px;">
-        📐 Ajustar Zoom
+        📐 ${t('guard.adjustZoom','Ajustar Zoom')}
       </button>
       
       <!-- Coordenadas del área -->
       <div style="margin-top: 15px; padding-top: 10px; border-top: 1px solid #4b5563;">
         <div style="font-size: 10px; color: #9ca3af; margin-bottom: 5px;">
           <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
-            <span>Superior Izq.:</span>
+            <span>${t('guard.upperLeft','Esquina Superior Izquierda')}:</span>
             <span id="coordsUpperLeft">--</span>
           </div>
           <div style="display: flex; justify-content: space-between;">
-            <span>Inferior Der.:</span>
+            <span>${t('guard.lowerRight','Esquina Inferior Derecha')}:</span>
             <span id="coordsLowerRight">--</span>
           </div>
         </div>
@@ -522,10 +637,10 @@ function comparePixels(originalPixels, currentPixels) {
       // Píxel faltante
       missing.set(key, originalPixel);
     } else if (compareColors(originalPixel, currentPixel)) {
-      // Píxel correcto
+      // Píxel correcto (colores dentro del umbral)
       correct.set(key, { original: originalPixel, current: currentPixel });
     } else {
-      // Píxel incorrecto
+      // Píxel incorrecto (colores fuera del umbral)
       incorrect.set(key, { original: originalPixel, current: currentPixel });
     }
   }
@@ -896,14 +1011,13 @@ function startSessionRecording(analysis) {
     updateToggleState('autoRefresh', true);
     
     // Disparar el evento change para activar el autorefresh
-    // eslint-disable-next-line no-undef
     autoRefreshCheckbox.dispatchEvent(new Event('change'));
   }
   
   // Registrar estado inicial
   recordSessionData(analysis);
   
-  console.log('📹 Grabación de sesión iniciada con autorefresh activado');
+  console.log(`📹 ${t('guard.sessionRecordingStarted','Grabación de sesión iniciada con autorefresh activado')}`);
 }
 
 // Función para detener la grabación de sesión
@@ -915,7 +1029,7 @@ function stopSessionRecording() {
     downloadSessionData();
   }
   
-  console.log('⏹️ Grabación de sesión detenida');
+  console.log(`⏹️ ${t('guard.sessionRecordingStopped','Grabación de sesión detenida')}`);
 }
 
 // Función para registrar datos de la sesión
@@ -945,7 +1059,7 @@ function recordSessionData(analysis) {
 // Función para descargar los datos de la sesión
 function downloadSessionData() {
   if (sessionData.length === 0) {
-    alert('No hay datos de sesión para descargar');
+    alert(t('guard.noSessionData','No hay datos de sesión para descargar'));
     return;
   }
   
@@ -963,12 +1077,10 @@ function downloadSessionData() {
     }
   };
   
-  // eslint-disable-next-line no-undef
   const blob = new Blob([JSON.stringify(sessionSummary, null, 2)], {
     type: 'application/json'
   });
   
-  // eslint-disable-next-line no-undef
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -976,10 +1088,9 @@ function downloadSessionData() {
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
-  // eslint-disable-next-line no-undef
   URL.revokeObjectURL(url);
   
-  console.log('💾 Datos de sesión descargados');
+  console.log(`💾 ${t('guard.sessionDataDownloaded','Datos de sesión descargados')}`);
 }
 
 // Función para capturar snapshot del canvas
@@ -1003,7 +1114,6 @@ function captureSnapshot(canvas, controlPanel) {
     // Convertir a blob y descargar
     tempCanvas.toBlob((blob) => {
       const link = document.createElement('a');
-      // eslint-disable-next-line no-undef
       link.href = URL.createObjectURL(blob);
 
       // Crear nombre de archivo con timestamp y precisión
@@ -1019,6 +1129,6 @@ function captureSnapshot(canvas, controlPanel) {
     
   } catch (error) {
     log('❌ Error al capturar snapshot:', error);
-    alert('❌ Error al capturar la imagen');
+    alert(`❌ ${t('guard.snapshotCaptureError','Error al capturar la imagen')}`);
   }
 }

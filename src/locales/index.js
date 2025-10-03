@@ -1,28 +1,34 @@
 import { es } from './es.js';
 import { en } from './en.js';
+import { de } from './de.js';
 import { fr } from './fr.js';
 import { ru } from './ru.js';
 import { zhHans } from './zh-Hans.js';
 import { zhHant } from './zh-Hant.js';
+import { pt } from './pt.js';
 
 // Idiomas disponibles
 export const AVAILABLE_LANGUAGES = {
   es: { name: 'Español', flag: '🇪🇸', code: 'es' },
   en: { name: 'English', flag: '🇺🇸', code: 'en' },
+  de: { name: 'Deutsch', flag: '🇩🇪', code: 'de' },
   fr: { name: 'Français', flag: '🇫🇷', code: 'fr' },
   ru: { name: 'Русский', flag: '🇷🇺', code: 'ru' },
   zhHans: { name: '简体中文', flag: '🇨🇳', code: 'zh-Hans' },
-  zhHant: { name: '繁體中文', flag: '🇨🇳', code: 'zh-Hant' }
+  zhHant: { name: '繁體中文', flag: '🇨🇳', code: 'zh-Hant' },
+  pt: { name: 'Português (Brasil)', flag: '🇧🇷', code: 'pt' }
 };
 
 // Todas las traducciones
 const translations = {
   es,
   en,
+  de,
   fr,
   ru,
   zhHans,
-  zhHant
+  zhHant,
+  pt
 };
 
 // Estado del idioma actual
@@ -36,7 +42,7 @@ let currentTranslations = translations[currentLanguage];
 export function detectBrowserLanguage() {
   const browserLang = window.navigator.language || window.navigator.userLanguage || 'es';
 
-  // Extraer solo el código del idioma (ej: 'es-ES' -> 'es')
+  // Extraer solo el código del idioma (ej: 'es-ES' -> 'es', 'pt-BR' -> 'pt')
   const langCode = browserLang.split('-')[0].toLowerCase();
 
   // Verificar si tenemos soporte para este idioma
@@ -67,17 +73,47 @@ export function saveLanguage(langCode) {
 }
 
 /**
+ * Obtiene el idioma global del sistema de bots
+ * @returns {string|null} Idioma global establecido o null
+ */
+function getGlobalLanguage() {
+  try {
+    return window.__wplaceBot?.globalLanguage || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Establece el idioma global del sistema de bots
+ * @param {string} langCode - Código del idioma
+ */
+function setGlobalLanguage(langCode) {
+  try {
+    if (!window.__wplaceBot) {
+      window.__wplaceBot = {};
+    }
+    window.__wplaceBot.globalLanguage = langCode;
+  } catch {
+    // Silenciar errores
+  }
+}
+
+/**
  * Inicializa el sistema de idiomas
  * @returns {string} Código del idioma inicializado
  */
 export function initializeLanguage() {
-  // Prioridad: guardado > navegador > español
+  // Prioridad: global > guardado > navegador > español
+  const globalLang = getGlobalLanguage();
   const savedLang = getSavedLanguage();
   const browserLang = detectBrowserLanguage();
 
-  let selectedLang = 'es'; // fallback por defecto
+  let selectedLang = 'es'; // fallback por defecto a español
 
-  if (savedLang && translations[savedLang]) {
+  if (globalLang && translations[globalLang]) {
+    selectedLang = globalLang;
+  } else if (savedLang && translations[savedLang]) {
     selectedLang = savedLang;
   } else if (browserLang && translations[browserLang]) {
     selectedLang = browserLang;
@@ -100,6 +136,7 @@ export function setLanguage(langCode) {
   currentLanguage = langCode;
   currentTranslations = translations[langCode];
   saveLanguage(langCode);
+  setGlobalLanguage(langCode); // Actualizar idioma global
 
   // Emitir evento personalizado para que los módulos puedan reaccionar
   if (typeof window !== 'undefined' && window.CustomEvent) {
